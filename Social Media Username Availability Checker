@@ -1,0 +1,51 @@
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+public class UsernameSystem {
+    private final Map<String, Integer> users = new ConcurrentHashMap<>();
+    private final Map<String, Integer> attemptFrequency = new ConcurrentHashMap<>();
+    private int nextUserId = 1;
+
+    public boolean checkAvailability(String username) {
+        String key = username.toLowerCase();
+        attemptFrequency.put(key, attemptFrequency.getOrDefault(key, 0) + 1);
+        return !users.containsKey(key);
+    }
+
+    public void register(String username) {
+        String key = username.toLowerCase();
+        if (!users.containsKey(key)) {
+            users.put(key, nextUserId++);
+        }
+    }
+
+    public List<String> suggestAlternatives(String username) {
+        List<String> suggestions = new ArrayList<>();
+        int suffix = 1;
+        while (suggestions.size() < 3) {
+            String candidate = (username + suffix).toLowerCase();
+            if (!users.containsKey(candidate)) {
+                suggestions.add(candidate);
+            }
+            suffix++;
+        }
+        return suggestions;
+    }
+
+    public String getMostAttempted() {
+        return attemptFrequency.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse("None");
+    }
+
+    public static void main(String[] args) {
+        UsernameSystem sys = new UsernameSystem();
+        sys.register("john_doe");
+        
+        System.out.println(sys.checkAvailability("john_doe"));
+        System.out.println(sys.checkAvailability("jane_smith"));
+        System.out.println(sys.suggestAlternatives("john_doe"));
+        System.out.println(sys.getMostAttempted());
+    }
+}
