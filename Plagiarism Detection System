@@ -1,0 +1,68 @@
+import java.util.*;
+
+public class PlagiarismDetector {
+    private final int N = 5; // Using 5-grams
+    private final Map<String, Set<String>> ngramIndex = new HashMap<>();
+    private final Map<String, Integer> docTotalNgrams = new HashMap<>();
+
+    public void addDocument(String docId, String content) {
+        String[] words = content.toLowerCase().split("\\W+");
+        Set<String> ngrams = extractNgrams(words);
+        docTotalNgrams.put(docId, ngrams.size());
+
+        for (String ngram : ngrams) {
+            ngramIndex.computeIfAbsent(ngram, k -> new HashSet<>()).add(docId);
+        }
+    }
+
+    private Set<String> extractNgrams(String[] words) {
+        Set<String> ngrams = new HashSet<>();
+        for (int i = 0; i <= words.length - N; i++) {
+            StringBuilder sb = new StringBuilder();
+            for (int j = 0; j < N; j++) {
+                sb.append(words[i + j]).append(" ");
+            }
+            ngrams.add(sb.toString().trim());
+        }
+        return ngrams;
+    }
+
+    public void analyzeDocument(String newDocId, String content) {
+        String[] words = content.toLowerCase().split("\\W+");
+        Set<String> newNgrams = extractNgrams(words);
+        Map<String, Integer> matchCounts = new HashMap<>();
+
+        for (String ngram : newNgrams) {
+            if (ngramIndex.containsKey(ngram)) {
+                for (String docId : ngramIndex.get(ngram)) {
+                    matchCounts.put(docId, matchCounts.getOrDefault(docId, 0) + 1);
+                }
+            }
+        }
+
+        System.out.println("Analysis for: " + newDocId);
+        System.out.println("Extracted " + newNgrams.size() + " n-grams.");
+
+        for (Map.Entry<String, Integer> entry : matchCounts.entrySet()) {
+            String docId = entry.getKey();
+            int matches = entry.getValue();
+            double similarity = (matches * 100.0) / newNgrams.size();
+
+            String status = similarity > 50 ? "PLAGIARISM DETECTED" : 
+                           (similarity > 10 ? "SUSPICIOUS" : "CLEAN");
+
+            System.out.printf("→ Found %d matches with %s: %.1f%% (%s)%n", 
+                               matches, docId, similarity, status);
+        }
+    }
+
+    public static void main(String[] args) {
+        PlagiarismDetector detector = new PlagiarismDetector();
+
+        detector.addDocument("essay_089.txt", "The quick brown fox jumps over the lazy dog");
+        detector.addDocument("essay_092.txt", "Java is a high level class based object oriented language");
+
+        String studentSubmission = "Java is a high level class based language for programming";
+        detector.analyzeDocument("student_work.txt", studentSubmission);
+    }
+}
