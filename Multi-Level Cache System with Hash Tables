@@ -1,0 +1,104 @@
+import java.util.*;
+import java.util.concurrent.atomic.LongAdder;
+
+public class MultiLevelCacheSystem {
+
+    private static class CacheStats {
+        LongAdder hits = new LongAdder();
+        LongAdder misses = new LongAdder();
+        double latency;
+
+        CacheStats(double latency) { this.latency = latency; }
+
+        double getHitRate() {
+            long total = hits.sum() + misses.sum();
+            return total == 0 ? 0 : (hits.sum() / (double) total) * 100;
+        }
+    }
+
+    private final int L1_SIZE = 10000;
+    private final int L2_SIZE = 100000;
+    private final int PROMOTION_THRESHOLD = 5;
+
+    private final Map<String, String> l1Cache;
+    private final Map<String, String> l2Cache;
+    private final Map<String, Integer> accessCounts = new HashMap<>();
+
+    private final CacheStats l1Stats = new CacheStats(0.5);
+    private final CacheStats l2Stats = new CacheStats(5.0);
+    private final CacheStats l3Stats = new CacheStats(150.0);
+
+    public MultiLevelCacheSystem() {
+        this.l1Cache = Collections.synchronizedMap(new LinkedHashMap<String, String>(L1_SIZE, 0.75f, true) {
+            protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                return size() > L1_SIZE;
+            }
+        });
+
+        this.l2Cache = Collections.synchronizedMap(new LinkedHashMap<String, String>(L2_SIZE, 0.75f, true) {
+            protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                return size() > L2_SIZE;
+            }
+        });
+    }
+
+    public String getVideo(String videoId) {
+        double totalLatency = 0;
+
+        if (l1Cache.containsKey(videoId)) {
+            l1Stats.hits.increment();
+            return String.format("L1 HIT (%.1fms) -> %s", l1Stats.latency, l1Cache.get(videoId));
+        }
+        l1Stats.misses.increment();
+        totalLatency += l1Stats.latency;
+
+        if (l2Cache.containsKey(videoId)) {
+            l2Stats.hits.increment();
+            totalLatency += l2Stats.latency;
+            
+            int count = accessCounts.getOrDefault(videoId, 0) + 1;
+            accessCounts.put(videoId, count);
+            
+            String data = l2Cache.get(videoId);
+            if (count >= PROMOTION_THRESHOLD) {
+                l1Cache.put(videoId, data);
+                l2Cache.remove(videoId);
+                return String.format("L2 HIT (%.1fms) -> Promoted to L1 -> Total: %.1fms", l2Stats.latency, totalLatency);
+            }
+            return String.format("L2 HIT (%.1fms) -> Total: %.1fms", l2Stats.latency, totalLatency);
+        }
+        l2Stats.misses.increment();
+        totalLatency += l2Stats.latency;
+
+        l3Stats.hits.increment();
+        totalLatency += l3Stats.latency;
+        String videoData = "VideoStreamData_" + videoId;
+        
+        l2Cache.put(videoId, videoData);
+        accessCounts.put(videoId, 1);
+
+        return String.format("L3 DB HIT (%.1fms) -> Added to L2 -> Total: %.1fms", l3Stats.latency, totalLatency);
+    }
+
+    public void getStatistics() {
+        System.out.println("\n--- Multi-Level Cache Statistics ---");
+        System.out.printf("L1: Hit Rate %.1f%%, Avg Time: %.1fms%n", l1Stats.getHitRate(), l1Stats.latency);
+        System.out.printf("L2: Hit Rate %.1f%%, Avg Time: %.1fms%n", l2Stats.getHitRate(), l2Stats.latency);
+        System.out.printf("L3: Hit Rate %.1f%%, Avg Time: %.1fms%n", l3Stats.getHitRate(), l3Stats.latency);
+        
+        long totalHits = l1Stats.hits.sum() + l2Stats.hits.sum();
+        long totalRequests = totalHits + l1Stats.misses.sum(); 
+        double overallHitRate = (totalRequests == 0) ? 0 : (totalHits / (double) totalRequests) * 100;
+        System.out.printf("Overall Cache Efficiency: %.1f%%%n", overallHitRate);
+    }
+
+    public static void main(String[] args) {
+        MultiLevelCacheSystem netflix = new MultiLevelCacheSystem();
+        System.out.println(netflix.getVideo("video_123"));
+        for (int i = 0; i < 5; i++) {
+            System.out.println(netflix.getVideo("video_123"));
+        }
+        System.out.println(netflix.getVideo("video_999"));
+        netflix.getStatistics();
+    }
+}
