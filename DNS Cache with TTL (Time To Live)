@@ -1,0 +1,73 @@
+import java.util.*;
+
+public class DNSCache {
+    private final int capacity;
+    private final Map<String, DNSEntry> cache;
+    private long hits = 0;
+    private long misses = 0;
+
+    class DNSEntry {
+        String ip;
+        long expiryTime;
+
+        DNSEntry(String ip, int ttlSeconds) {
+            this.ip = ip;
+            this.expiryTime = System.currentTimeMillis() + (ttlSeconds * 1000L);
+        }
+
+        boolean isExpired() {
+            return System.currentTimeMillis() > expiryTime;
+        }
+    }
+
+    public DNSCache(int capacity) {
+        this.capacity = capacity;
+        this.cache = new LinkedHashMap<String, DNSEntry>(capacity, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, DNSEntry> eldest) {
+                return size() > capacity;
+            }
+        };
+    }
+
+    public synchronized String resolve(String domain) {
+        DNSEntry entry = cache.get(domain);
+
+        if (entry != null && !entry.isExpired()) {
+            hits++;
+            return entry.ip;
+        }
+
+        misses++;
+        if (entry != null) {
+            cache.remove(domain);
+        }
+
+        String ip = queryUpstreamDNS(domain);
+        cache.put(domain, new DNSEntry(ip, 300));
+        return ip;
+    }
+
+    private String queryUpstreamDNS(String domain) {
+        return "172.217." + new Random().nextInt(255) + "." + new Random().nextInt(255);
+    }
+
+    public void getCacheStats() {
+        double total = hits + misses;
+        double hitRate = (total == 0) ? 0 : (hits / total) * 100;
+        System.out.println("Hit Rate: " + String.format("%.1f", hitRate) + "%");
+        System.out.println("Hits: " + hits + ", Misses: " + misses);
+    }
+
+    public static void main(String[] args) {
+        DNSCache dns = new DNSCache(3);
+
+        System.out.println(dns.resolve("google.com"));
+        System.out.println(dns.resolve("google.com"));
+        System.out.println(dns.resolve("amazon.com"));
+        System.out.println(dns.resolve("netflix.com"));
+        System.out.println(dns.resolve("apple.com"));
+        
+        dns.getCacheStats();
+    }
+}
