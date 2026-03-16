@@ -1,0 +1,63 @@
+import java.util.*;
+
+public class AutocompleteSystem {
+    class TrieNode {
+        Map<Character, TrieNode> children = new HashMap<>();
+        Map<String, Integer> counts = new HashMap<>();
+    }
+
+    private final TrieNode root = new TrieNode();
+    private final Map<String, Integer> globalFrequency = new HashMap<>();
+
+    public void updateFrequency(String query) {
+        int count = globalFrequency.getOrDefault(query, 0) + 1;
+        globalFrequency.put(query, count);
+        
+        TrieNode curr = root;
+        for (char c : query.toCharArray()) {
+            curr.children.putIfAbsent(c, new TrieNode());
+            curr = curr.children.get(c);
+            curr.counts.put(query, count);
+        }
+    }
+
+    public List<String> search(String prefix) {
+        TrieNode curr = root;
+        for (char c : prefix.toCharArray()) {
+            if (!curr.children.containsKey(c)) return Collections.emptyList();
+            curr = curr.children.get(c);
+        }
+
+        PriorityQueue<Map.Entry<String, Integer>> pq = new PriorityQueue<>(
+            (a, b) -> a.getValue().equals(b.getValue()) ? 
+                      a.getKey().compareTo(b.getKey()) : 
+                      b.getValue() - a.getValue()
+        );
+
+        pq.addAll(curr.counts.entrySet());
+
+        List<String> results = new ArrayList<>();
+        for (int i = 0; i < 10 && !pq.isEmpty(); i++) {
+            Map.Entry<String, Integer> entry = pq.poll();
+            results.add(entry.getKey() + " (" + entry.getValue() + " searches)");
+        }
+        return results;
+    }
+
+    public static void main(String[] args) {
+        AutocompleteSystem engine = new AutocompleteSystem();
+
+        engine.updateFrequency("java tutorial");
+        for(int i=0; i<100; i++) engine.updateFrequency("javascript");
+        for(int i=0; i<50; i++) engine.updateFrequency("java download");
+        engine.updateFrequency("java 21 features");
+        engine.updateFrequency("java 21 features");
+
+        System.out.println("Suggestions for 'jav':");
+        engine.search("jav").forEach(System.out::println);
+
+        System.out.println("\nUpdating 'java 21 features' trending...");
+        engine.updateFrequency("java 21 features");
+        engine.search("java 21").forEach(System.out::println);
+    }
+}
