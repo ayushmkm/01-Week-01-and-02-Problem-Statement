@@ -1,0 +1,84 @@
+import java.util.*;
+
+public class MultiLevelCache {
+    private final int L1_SIZE = 10000;
+    private final int L2_SIZE = 100000;
+    private final int PROMOTION_THRESHOLD = 5;
+
+    private final Map<String, String> l1Cache;
+    private final Map<String, String> l2Cache;
+    private final Map<String, Integer> accessCounts = new HashMap<>();
+
+    private long l1Hits = 0, l2Hits = 0, l3Hits = 0;
+    private long totalRequests = 0;
+
+    public MultiLevelCache() {
+        this.l1Cache = new LinkedHashMap<>(L1_SIZE, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                return size() > L1_SIZE;
+            }
+        };
+
+        this.l2Cache = new LinkedHashMap<>(L2_SIZE, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                return size() > L2_SIZE;
+            }
+        };
+    }
+
+    public String getVideo(String videoId) {
+        totalRequests++;
+        
+        if (l1Cache.containsKey(videoId)) {
+            l1Hits++;
+            return l1Cache.get(videoId);
+        }
+
+        if (l2Cache.containsKey(videoId)) {
+            l2Hits++;
+            String data = l2Cache.get(videoId);
+            updateAccessAndPromote(videoId, data);
+            return data;
+        }
+
+        l3Hits++;
+        String data = queryDatabase(videoId);
+        l2Cache.put(videoId, data);
+        updateAccessAndPromote(videoId, data);
+        return data;
+    }
+
+    private void updateAccessAndPromote(String videoId, String data) {
+        int count = accessCounts.getOrDefault(videoId, 0) + 1;
+        accessCounts.put(videoId, count);
+
+        if (count >= PROMOTION_THRESHOLD) {
+            l1Cache.put(videoId, data);
+            l2Cache.remove(videoId);
+        }
+    }
+
+    private String queryDatabase(String videoId) {
+        return "VideoData_" + videoId;
+    }
+
+    public void getStatistics() {
+        System.out.println("L1 Hit Rate: " + (l1Hits * 100.0 / totalRequests) + "%");
+        System.out.println("L2 Hit Rate: " + (l2Hits * 100.0 / totalRequests) + "%");
+        System.out.println("L3 Hit Rate: " + (l3Hits * 100.0 / totalRequests) + "%");
+        System.out.println("Overall Cache Hit Rate: " + ((l1Hits + l2Hits) * 100.0 / totalRequests) + "%");
+    }
+
+    public static void main(String[] args) {
+        MultiLevelCache netflix = new MultiLevelCache();
+
+        for (int i = 0; i < 6; i++) {
+            System.out.println("Request " + (i + 1) + ": " + netflix.getVideo("video_123"));
+        }
+
+        netflix.getVideo("video_999");
+        netflix.getStatistics();
+    }
+}
